@@ -1,0 +1,99 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                   %
+%         Godley and Lavoie         %
+%        MONETARY ECONOMICS         %
+%             2nd edition           %
+%                                   %
+%           SIM model               %
+%           Chapter 3               %
+%                                   %
+%  code by  Anthony Bonen           %
+%           March 2014              %
+%                                   %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+close all
+clear all
+
+T = 100;            % Number of periods (e.g. years)
+
+
+% Parameters
+theta = 0.2;        % tax rate
+alpha1 = 0.6;       % marginal propensity to consume from dispoable income
+alpha2 = 0.4;       % marginal propensity to consume from assets
+
+% Endogenous Variables - preallocated
+C = zeros(T,1);     % Consumption
+H = zeros(T,1);     % Stock of wealth
+Y = zeros(T,1);     % Gross Output/Income (expenditure defition)
+YD = zeros(T,1);    % Disposable income
+tax = zeros(T,1);   % Tax revenue
+
+dHs = zeros(T,1);   % Financial assets - supply  flow
+dHh = zeros(T,1);   % Financial assets - holding flow
+dH  = zeros(T,1);   % Financial assets - actual change
+
+% Exogenous Variable - preallocated
+G = 20*ones(T,1);   % Government expenditure
+
+
+
+fprintf('\n');
+fprintf('___________________________________________________________________\n');
+fprintf('      | Income  |Disposable |   Tax   |Consumption|   Financial    |\n');
+fprintf(' iter.|         |  Income   | Revenue |           | stock    flows |\n');
+fprintf('  [t] |  [Y]    |   [YD]    |  [tax]  |    [C]    |  [H]      [dH] |\n');
+fprintf('------|---------|-----------|---------|-----------|----------------|\n');
+
+
+
+for t = 2:T
+    YI = G(t) + alpha2*H(t-1);    % Income Definition of Total Output
+                                  % (3.11A) & (3.4) YS = W*N 
+    
+    % Recursion to find goods market equilibrium (Y == YI)
+    % (Thanks to Siavash Radpour for this approach)
+    while abs(Y(t)-YI) > 0.00001
+        Y(t) = YI;
+
+        tax(t) = theta*Y(t);
+        YD(t)  = Y(t) - tax(t);                                     % (3.5)
+        C(t)   = alpha1*YD(t) + alpha2*H(t-1);                      % (3.7)
+        YI     = C(t) + G(t);                                       % (3.10)
+    end
+        % flows of financial assets
+        dHs(t) = G(t) - tax(t);                                     % (3.8) Fiscal deficit
+        dHh(t) = YD(t) - C(t);                                      % (3.9)
+        dH(t)  = dHs(t);  %= dHh(t)                                 % redundant
+        
+    % Update stock of financial wealth
+    H(t) = H(t-1) + dH(t);
+
+% Display  
+fprintf(' %3d  |  %6.2f |   %6.2f  |  %5.2f  |   %6.2f  | %6.2f  %6.2f |', t, ...
+      Y(t), YD(t), tax(t), C(t), H(t), dH(t));
+fprintf('\n')
+end
+
+
+% Plots
+periods = (1:T)';
+figure('Name', 'The Long Run', 'units', 'normalized', 'position', [0.1,0.2, 0.35, 0.8])
+subplot(3,1,1)
+plot(periods, Y, '-+r', periods, tax, '--g', 'linewidth', 2)
+legend('Income', 'Tax Revenue')
+legend('location', 'east')
+%ylim([0,110])
+
+subplot(3,1,2)
+plot(periods, YD, '-+b', periods, C, '--c', 'linewidth', 2)
+legend('Disposable Income', 'Consumption')
+legend('location', 'southeast')
+%ylim([0,90])
+
+subplot(3,1,3)
+plot(periods, H, '--k', periods, dH, '-.g', 'linewidth', 2)
+legend('Financial Assets: Stock', 'Financial Assets: Flow')
+legend('location', 'east')
+%ylim([0,90])
