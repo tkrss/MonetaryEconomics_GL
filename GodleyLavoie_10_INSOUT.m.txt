@@ -1,0 +1,584 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                   %
+%         Godley and Lavoie         %
+%        MONETARY ECONOMICS         %
+%             2nd edition           %
+%                                   %
+%          INSOUT model             %
+%           Chapter 10              %
+%                                   %
+%  code by  Anthony Bonen           %
+%           April 2014              %
+%                                   %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+disp(' ')
+clear all
+close all
+
+T = 30;
+
+% PRODUCING FIRMS 
+% preallocation
+y       = NaN(T,1);       % real (widgets of) output
+Y       = NaN(T,1);       % Total Output
+in      = NaN(T,1);       % real units of inventory
+IN      = NaN(T,1);       % Nominal value of inventory
+Ld      = NaN(T,1);       % Desired loans
+N       = NaN(T,1);       % level of employment
+pr      = NaN(T,1);       % Labour Productivity
+W       = NaN(T,1);       % Wage Rate (exogenous)
+WB      = NaN(T,1);       % total wage bill
+UC      = NaN(T,1);       % Unit cost of production
+s       = NaN(T,1);       % Actual Sales
+S       = NaN(T,1);       % Nominal Sales
+s_e     = NaN(T,1);       % Expectations of (real) sales
+inT     = NaN(T,1);       % Targetted inventories
+sig     = NaN(T,1);       % Actual Sales Ratio
+sigT    = NaN(T,1);       % Targetted sales ratio (% of production)
+rrl     = NaN(T,1);       % real rate of interest of loans (L)
+in_e    = NaN(T,1);       % short-run expected inventories
+NHUC    = NaN(T,1);       % Normal Historic Unit Cost
+Ff_e    = NaN(T,1);       % Expected Profits of Firms
+Ff      = NaN(T,1);       % Realized Profits of Firms
+
+% firm parameters
+pr      = 1*(1+pr);         % labour producitivity: N*pr = y
+beta    = 0.5;              % Adaptive expectations adjustment for sales ratio
+sig0    = 0.3612;           % Base-level (intercept) for targetted sales ratio
+sig1    = 3;                % Adjustment rate (slope) of targetted sales ratio to interest
+gamma   = 0.5;              % Inventory missed target adjustment rate
+phi     = 0.1;              % Firms' Mark-up (Kaleckian pricing)
+
+% HOUSEHOLD SECTOR
+% preallocation - current accounts
+YDr     = NaN(T,1);       % Realized Nominal Disposable Income
+YDr_e   = NaN(T,1);       % Expected Nominal Disposable Income
+ydr     = NaN(T,1);       % Realized Real (widgets) Disposable Income
+ydr_e   = NaN(T,1);       % Expected Real (widgets) Disposable Income
+CG      = NaN(T,1);       % Capital Gains
+YDhs    = NaN(T,1);       % Haig-Simons disposable income, nominal
+ydhs    = NaN(T,1);       % Haig-Simons disposable income, real
+F       = NaN(T,1);       % Profits transferred from banks and firms
+V       = NaN(T,1);       % Net Worth
+V_e     = NaN(T,1);       % Net Worth, expected
+Vnc     = NaN(T,1);       % Net Worth, net of cash holdings
+Vnc_e   = NaN(T,1);       % Net Worth, expected, net of cash holdings
+v       = NaN(T,1);       % Net Worth, real terms
+c       = NaN(T,1);       % Real    Consumption
+C       = NaN(T,1);       % Nominal Consumption
+
+omegaT  = NaN(T,1);       % Target Real Wage (W/p)
+
+% preallocation - portfolio choices
+Hhd     = NaN(T,1);       % Household cash money demand
+Hhh     = NaN(T,1);       % Household cash money holdings
+Hhs     = NaN(T,1);       % Household cash money supplied
+
+M1d     = NaN(T,1);       % Chequeing account demand (zero interest paid)
+M2d     = NaN(T,1);       % Time (saving account) deposits demand
+Bhd     = NaN(T,1);       % Short-term Government Bonds == BILLS demand
+BLd     = NaN(T,1);       % Long -term Government Bonds == BONDS demand
+PCd     = [M1d, M2d, Bhd, BLd];  % Vectorized portfolio allocations (desired)
+
+M1h     = NaN(T,1);       % Chequeing account demand (zero interest paid), holdings
+M2h     = NaN(T,1);       % Time (saving account) deposits demand, holdings
+Bhh     = NaN(T,1);       % Short-term Government Bonds == BILLS holdings
+BLh     = NaN(T,1);       % Long -term Government Bonds == BONDS holdings
+M1hN    = NaN(T,1);       % Chequeing account demand (zero interest paid),  NOMINAL
+M2hN    = NaN(T,1);       % Time (saving account) deposits demand, holdings NOMINAL
+
+% Household parameters
+alpha    = [0, 0.95, 0.05];  % Cambridge Consumption eq'n: [intercept, MPC(yd), MPC(wealth)]
+lambdaC  = 0.1;              % proportion of consumption held in cash
+epsilon  = 0.5;              % Adaptive expectations adjustment for expected disposable income (ydr_e)
+
+% Ratios of portfolio adjustments (box 10.5)
+lambda   = NaN(4,6);              % Responses to Four Assets:
+                                    % 0) Constant level of asset holding (lambda_i0)
+                                    % 1) chequeing accounts (nominal return == 0)
+                                    % 2) savings   accounts
+                                    % 3) government bills
+                                    % 4) government bonds
+                                    % 5) Changing (expected) Disposable Income\
+                                    %               to Wealth (net of cash) ratio
+
+lambda(2,:) = [0.52245,  20,  40, -20, -20, -0.06];  % Time deposits response to chqing, SELF, bill, and bond returns and YD/Vnc, respectively
+lambda(3,:) = [0.47311,  40, -20,  40, -20, -0.06];  % Bills         response to chqing, time, SELF, and bond returns and YD/Vnc, respectively
+lambda(4,:) = [0.17515,  20, -20, -20,  40, -0.06];  % Bonds         response to chqing, time, bill, and SELF returns and YD/Vnc, respectively                                    
+% NOTE: M1d is the residual PC variable and hence will always equal M1h
+% thus the PC variables for M1d (row 1 in lambda) are not necessary for the
+% progam to work.  Nevertheless the ADDUP restrictions ensure the values:
+lambda(1,:) = [1, 0, 0, 0, 0, 0] - [sum(lambda(2:end,1)), sum(lambda(2:end,2)),...
+                                    sum(lambda(2:end,3)), sum(lambda(2:end,4)),...
+                                    sum(lambda(2:end,5)), sum(lambda(2:end,6))];
+% by symmtery (ADUP.7-ADUP.12)
+lambda(2,2) = lambda(1,3);
+lambda(3,2) = lambda(1,4);
+lambda(4,2) = lambda(1,5);
+lambda(1,2) = 0 - sum(lambda(2:end,2));
+
+Omega   = [-0.32549, 1, 1.5];   % Real wage target parameters
+                                %   [const, productivity, employment rate]
+Omega3  = 0.1;                  % Wage adjustment rate from missed target
+Nfe     = 133.28;               % Full Employment Level
+                                
+                                
+% GOVERNMENT SECTOR
+% preallocation                                    
+G       = NaN(T,1);       % Government Expenditures, nominal
+g       = NaN(T,1);       % Government Expenditures, real
+Tax     = NaN(T,1);       % Tax Revenue, nominal
+PSBR    = NaN(T,1);       % Public Sector Borrowing Requirement (ie, fiscal deficit)
+Bs      = NaN(T,1);       % Issuance of New Bills
+BLs     = NaN(T,1);       % Issuance of New Bonds
+
+% Government parameters
+tau     = 0.25;             % Tax rate (sales: GST/VAT)
+rbarBL  = 0.027;            % Gov't set rate on Bonds
+g0      = 25;               % Government purchases of widgets
+
+
+
+% CENTRAL BANK
+% preallocation 
+Hs      = NaN(T,1);       % HIGH POWERED MONEY (CB liabilities)
+As      = NaN(T,1);       % Supply of Advances to Commerical Banks
+Bcb     = NaN(T,1);       % Bills held by the central bank (CB asset)
+    Hbs = NaN(T,1);       % HPM to banks (residual)
+Fcb     = NaN(T,1);       % Central Bank Profit
+Bhs     = NaN(T,1);       % Short-term Government Bonds == BILLS supplied
+
+% Central Bank parameter
+rbarb   = 0.023;            % CB set rate on bills (prime rate)
+
+% COMMERCIAL BANKS
+% preallocation 
+M1s      = NaN(T,1);      % Supply of chequeing deposites to HH
+M2s      = NaN(T,1);      % Supply of time/savings deposits to HH
+Ls       = NaN(T,1);      % Supply of loans to productive firms
+Hbd      = NaN(T,1);      % Cash (HPM) reserve requirement for banks
+
+BbdN     = NaN(T,1);      % Notional Balance Sheet Constraint
+Bbd      = NaN(T,1);      % Actual   Balance Sheet Constraint
+BLRN     = NaN(T,1);      % Net/Notional   Bank Liquidity Ratio
+BLR      = NaN(T,1);      % Gross/Actual   Bank Liquidity Ratio
+Ad       = NaN(T,1);      % Demand for CB Advances
+
+Fb       = NaN(T,1);      % Bank Profits
+BPM      = NaN(T,1);      % Mean Bank Profit Margin (2 period average)
+
+% Commercial banks parameters
+rho1 = 0.1;                 % Reserve requirement ratio on chequing accts
+rho2 = 0.1;                 % Reserve requirement ratio on savings  accts
+bot  = 0.02;                % Minimum notional liquidity ratio accepted by banks
+top  = 0.04;                % Maximum notional liquidity ratio accepted by banks
+
+
+
+% PRICES and INTEREST RATES
+p       = NaN(T,1);       % NOMINAL PRICES of PRODUCED GOODS
+pi      = NaN(T,1);       % Inflation Rate
+
+r       = NaN(T,1);       % return on chequeing deposits (not explicit in G&L, ch. 10)
+rb      = NaN(T,1);       % Short term rate on bills      
+ra      = NaN(T,1);       % Interest rate on advances
+rm      = NaN(T,1);       % Interet rate on time/savings desposits
+rl      = NaN(T,1);       % Rate of interest on loans
+rbL     = NaN(T,1);       % Interest rate on long bonds
+ERrbL   = NaN(T,1);       % Long Bond real return
+pbL     = NaN(T,1);       % Long Bond Prices
+
+
+% Prices & Interest Rate parameters
+zetab   = 0.9;              % reaction rate of rm to rb
+zetal   = 0.002;            % reaction rate of rl to bank profit
+zetam   = 0.0002;           % reaction rate of rm to bank liquidity ratio
+botpm   = 0.002;            % Minimum profit margin of banks
+toppm   = 0.005;            % Maximum profit margin of banks
+
+
+
+% EXOGENOUS VARIABLES:
+r(:)    = 0;                % return on chequeing deposits (not explicit in G&L, ch. 10)
+rb(:)   = rbarb;                                    % (10.58)
+ra      = rb;
+rbL(:)  = rbarBL;                                   % (10.54)
+pbL(:)  = 1./rbL;                                   % (10.53) bond price
+ERrbL(:) = rbarBL;           % total returns on long bonds
+g(:)    = g0;
+pr(:)   = 1;
+
+% INITIAL FINANCIAL STOCKS
+    Ad(1)   = 0;
+    As(1)   = Ad(1);
+    Bbd(1)  = 1.19481;
+    BbdN(1) = Bbd(1);
+    Bcb(1)  = 19.355;
+    Bhh(1)  = 49.69136;
+    Bhd(1)  = Bhh(1);
+    Bhs(1)  = Bhh(1);
+    Bs(1)   = Bhd(1) + Bbd(1) + Bcb(1);
+    
+    BLh(1)  = 1.12309;
+    BLd(1)  = BLh(1);
+    BLs(1)  = BLd(1);
+    
+    Hbd(1)  = 4.36249;
+    Hbs(1)  = Hbd(1);
+    Hhd(1)  = 14.992;
+    Hhh(1)  = Hhd(1);
+    Hhs(1)  = Hhd(1);
+    Hs(1)   = Hhs(1) + Hbs(1);
+    
+    M1s(1)  = 3.9482;
+    M1h(1)  = M1s(1);
+    M1d(1)  = M1s(1);
+    M1hN(1) = M1h(1);
+    M2s(1)  = 39.667;
+    M2d(1)  = M2s(1);
+    M2h(1)  = M2d(1);
+    M2hN(1) = M2h(1);
+    PCd(1,:)= zeros(1,4);
+% INITIALIZED ENDOGENOUS VARIALBES
+    % commercial banks
+    rb(1)   = 0.02301;
+    ra(1)   = rb(1);
+    rm(1)   = 0.02095;
+    rl(1)   = 0.02515;
+    BPM(1:2) = (toppm + botpm)/2;
+    BLRN(1) = 0.02737;
+    BLR(1)  = BLRN(1);
+    Fb(1)   = 0.1535;
+    Ff(1)   = 0;
+    F(1)    = Fb(1) + Ff(1);
+
+    % prices and production
+    p(1)    = 1.38469;
+    pi(1)   = 0;
+    W(1)    = 1;
+    N(1)    = Nfe;
+    WB(1)   = W(1)*N(1);
+    omegaT(1)=0.72215;
+    UC(1)   = 1;
+
+    s(1)    = 133.277;
+    s_e(1)  = s(1);
+    y(1)    = s(1);
+    Y(1)    = p(1)*s(1) + UC(1).*0;
+    S(1)    = s(1)*p(1);
+    in(1)   = 38.07;
+    IN(1)   = in(1)*UC(1);
+    in_e(1) = in(1);
+    Ls(1)   = IN(1);
+    Ld(1)   = Ls(1);
+
+    % households
+    ydr(1)  = 108.28;
+    ydr_e(1)= ydr(1);
+    y(1)    = s(1);
+    c(1)    = s(1);
+    C(1)    = c(1)*p(1);
+
+    YDr(1)  = ydr(1)*p(1);
+    YDr_e(1)= YDr(1);
+    CG(1)   = 0;
+
+    % Government
+    Tax(1)  = S(1)*(tau/(1+tau));
+    G(1)    = g(1)*p(1);
+    PSBR(1) = 0;
+    % Central Bank
+    Fcb(1)  = 0;
+
+    % Wealth
+    v(1)    = 108.285;
+    V(1)    = v(1)*p(1);
+    V_e(1)  = V(1);
+    Vnc(1)  = V(1) - Hhh(1);
+    Vnc_e(1)= Vnc(1);
+
+shock = 5;
+for t = 2:T
+  % SHOCKS and PARAMETER CHANGES  
+  if t == shock+1
+      sig0 = 0.4;  
+  end
+  
+  
+  % Commercial Banks' Realized Profits
+  Fb(t)   =   rl(t-1)*Ls(t-1)  + rb(t-1)*Bbd(t-1) ...      % (10.77)
+            - rm(t-1)*M2s(t-1) - ra(t-1)*Ad(t-1);
+  
+% INTEREST RATES  
+  % Liquidity Ratio Boundaries
+  if     BLRN(t-1) < bot
+      z4 = 1;
+      z5 = 0;
+  elseif BLRN(t-1) >= bot && BLRN(t-1) < top 
+      z4 = 0;
+      z5 = 0;
+  else
+      z4 = 0;
+      z5 = 1;
+  end
+  rm(t)  = rm(t-1) + zetam*(z4 - z5) + zetab*(rb(t) - rb(t-1));
+  
+  % Banks' Mean Porfit Margin
+  if t>2
+    BPM(t)  = (Fb(t) + Fb(t-1)) / ...                        % (10.82)
+                 (M1s(t-1) + M2s(t-1) + M1s(t-2) + M2s(t-2));
+  end
+  
+  % Profit Margin boundaries
+  if     BPM(t) < botpm
+      z6 = 1;
+      z7 = 0;
+  elseif BPM(t) >= botpm && BPM(t) < toppm
+      z6 = 0;
+      z7 = 0;
+  else
+      z6 = 0;
+      z7 = 1;
+  end
+  rl(t)  = rl(t-1) + zetal*(z6 - z7) + (rb(t) - rb(t-1));
+  %rrl(t)  = (1+rl(t)) / (1 + pi(t)) - 1;
+
+% PRODUCTIVE FIRMS, expectation & target formation
+   s_e(t)  = beta*s(t-1) + (1-beta)*s_e(t-1);       % (10.5) expected sales
+   sigT(t) = sig0 - sig1*rl(t);                     % (10.7) targetted sales ratio
+   inT(t)  = sigT(t)*s_e(t);                        % (10.6) targetted invetory level
+   in_e(t) = in(t-1) + gamma*(inT(t) - in(t-1));    % (10.9) expected inventory
+
+% PRODUCTION!
+   % based on expected sales
+   y(t)    = s_e(t) + in_e(t) - in(t-1);            % (10.1) WIDGETS!
+   N(t)    = y(t)/pr(t);                            % (10.2) Labour demand
+   % Workers Wages
+ %omegaT(t)= Omega*[1; pr(t); N(t)/Nfe];           % (10.84) Target W/p
+   % It took me a looong time to find this typo!
+   omegaT(t)= exp(Omega*[1; log(pr(t)); log(N(t)/Nfe)]); % (zezza's code)
+
+   W(t)    = W(t-1)*(1 + Omega3*(omegaT(t-1) - W(t-1)/p(t-1))); % (10.85)
+   % Productin Costs
+   WB(t)   = W(t)*N(t);                             % (10.3) Nominal wage bill
+   UC(t)   = WB(t)/y(t);                            % (10.4) Nominal UNIT COST
+   NHUC(t) = (1-sigT(t))*UC(t) + sigT(t)*(1+rl(t-1))*UC(t-1);     % (10.11)
+   
+   % PRICES!
+   p(t)    = (1+tau)*(1+phi)*NHUC(t);               % (10.10) price level
+   pi(t)   = (p(t) - p(t-1))/p(t-1);                % (10.19) inflation
+   
+   Ff_e    = (phi/(1+phi))*(1/(1+tau))*p(t)*s_e(t); % (10.11A) Firms' Expected Profits
+
+
+% HOUSEHOLD MARKET DECISIONS
+   % expected disposable income
+   ydr_e(t) = epsilon*ydr(t-1) + (1-epsilon)*ydr_e(t-1);        % (10.30)
+   YDr_e(t) = ydr_e(t)*p(t) + pi(t)*V(t-1)/p(t);                % (10.32)
+   % consumption
+   c(t)     = alpha(1) + alpha(2)*ydr_e(t) + alpha(3)*v(t-1);   % (10.29)
+   C(t)     = c(t)*p(t);                                        % (10.31)
+   % expected wealth
+   V_e(t)   = V(t-1) + YDr_e(t-1) - C(t);                       % (10.33)
+
+   
+% The MARKET FOR GOODS AND SERVICES
+   s(t)     = c(t) + g(t);                          % (10.12) Real sales
+   in(t)    = y(t) - s(t) + in(t-1);                % (10.14) Real inventories
+   S(t)     = p(t)*s(t);                            % (10.12) Nominal sales
+   sig(t)   = in(t-1)/s(t);                         % (10.15) Sales ratio
+   IN(t)    = in(t)*UC(t);                          % (10.16) Value of inventory
+   Ld(t)    = IN(t);                                % (10.17) Firms' loan demand
+   % government revenue and nominal spending
+   G(t)     = p(t)*g(t);                                        % (10.49)
+   Tax(t)   = S(t)*tau/(1+tau);                                 % (10.48)   
+
+% GROSS OUTPUT
+   Y(t) = p(t).*s(t) + UC(t).*(in(t) - in(t-1));                  % (10.86)
+   
+% HOUSEHOLD PORTFOLIO CHOICES
+   Hhd(t) = lambdaC*C(t);                           % (10.33) Desired Cash
+   Vnc_e(t) = V_e(t) - Hhd(t);                      % (10.35) Net Cash Expected Wealth
+   % Capital Gains
+   CG(t)  = (pbL(t) - pbL(t-1))*BLh(t-1);                      % (10.21)
+   ERrbL(t)= rbL(t) + 0.1*CG(t);                               % n/a
+   
+   
+   % Box 10.5: Nominal Rates of Return, equations (10.36)-(10.39)
+   PCd(t,:) = lambda*[1; r(t); rm(t); rb(t); ERrbL(t); YDr_e(t)/Vnc_e(t)];
+       M1d(t)   = PCd(t,1)*Vnc_e(t);                % Chequeing account
+       M2d(t)   = PCd(t,2)*Vnc_e(t);                % Savings account
+       Bhd(t)   = PCd(t,3)*Vnc_e(t);                % Gov't bills
+       BLd(t)   = PCd(t,4)*Vnc_e(t)/pbL(t);         % Gov't bonds (long)
+       
+   % HHs' Bills and Bonds are automatically met by CB & Gov't, respectively
+   BLs(t) = BLd(t);                             % (10.52) Bonds Supplied
+   Bhs(t) = Bhd(t);                             % (no.eq) Bills Supplied
+                                                %    (Not explicit in G&L)
+     
+% COMMERCIAL BANKS
+   % Reaction to HH Asset Demands, Box 10.10
+   Hhs(t) = Hhd(t);                                 % (10.62) Cash is supplied
+   M1s(t) = M1d(t);                                 % (10.63) Chq  is supplied
+   M2s(t) = M2d(t);                                 % (10.64) Sav  is supplied
+   Ls(t)  = Ld(t);                                  % (10.65) Loans   supplied
+   Hbd(t) = rho1*M1s(t) + rho2*M2s(t);              % (10.66) RESERVE REQUIREMENT
+   
+   % Balance Sheet and Liquidity, Box 10.11
+   BbdN(t)= M1s(t) + M2s(t) - Ls(t) - Hbd(t);       % (10.67) Notional BS rule
+   BLRN(t)= BbdN(t)/(M1s(t) + M2s(t));              % (10.68) Net Liquidity Ratio
+   if BLRN(t) < bot
+       z3 = 1;
+   else
+       z3 = 0;
+   end
+   Ad(t)  = (bot*(M1s(t) + M2s(t)) - BbdN(t))*z3;      % (10.69) Demanded Advances
+   
+   % (10.71) Actual Balance Sheet Constraint of Banks
+   Bbd(t) = Ad(t) + M1s(t) + M2s(t) - Ls(t) - Hbd(t);
+   % (10.72) Actual Liquidity Ratio of Banks
+   BLR(t) = Bbd(t)/(M1s(t) + M2s(t));
+   
+% REALIZATIONS OF PROFITS, INCOME and ASSETS HOLDINGS
+
+       % Productive Firms' Realized Profits
+       Ff(t)   = S(t) - Tax(t) - WB(t) + (IN(t) - IN(t-1)) ...  % (10.17)
+                               - rl(t-1)*IN(t-1); 
+       % Total Private Sector Profits Returned to Households
+       F(t)    = Ff(t) + Fb(t);                                 % (10.23)
+
+       % Central Bank's Realized Profits
+       Fcb(t)   = rb(t-1)*Bcb(t-1) + ra(t-1)*As(t-1);           % (10.61)
+       % Government, public sector borrowing requirement
+       PSBR(t)  = G(t) + rb(t-1)*Bs(t-1) + BLs(t-1)...          % (10.50)
+                        - Tax(t) - Fcb(t);
+       % Government, induced bill issuance (supply)
+       Bs(t)    = Bs(t-1)+ PSBR(t) + (BLs(t) - BLs(t-1))*pbL(t); % (10.51)
+
+    
+% REALIZATIONS OF INCOME and ASSETS HOLDINGS
+   % HOUSEHOLD INCOME and WEALTH
+       % Realized Dispoable Income
+       YDr(t) = F(t) + WB(t) + rm(t-1)*M2h(t-1) ...             % (10.20)
+                     + rb(t-1)*Bhh(t-1) + BLh(t-1);
+       % Real Realized Disposable Income (inflation adj)            
+       ydr(t) = YDr(t)/p(t) - pi(t)*V(t-1)/p(t);                % (10.26)
+
+       % New wealth = previous level, plus regular income, and capital gains
+       %  (= Haig-Simons income)less current consumption
+       V(t)   = V(t-1) + YDr(t) + CG(t) - C(t);                 % (10.24')
+       v(t)   = V(t)/p(t);                                      % (10.28)
+
+   % HOUSEHOLD REALIZED ASSET HOLDINGS, Box 10.7 amended
+   Hhh(t) = Hhs(t);                             % (10.40), Cash  Supplied
+   Bhh(t) = Bhs(t);                             % (10.41), Bills Supplied
+   BLh(t) = BLs(t);                             % (10.42), Bonds Supplied
+   
+   Vnc(t) = V(t) - Hhh(t);                                    % (10.25)
+
+   % Notional Chequeing Acct Holdings (+ or -),   (10.43)
+   M1hN(t) = Vnc(t) - M2d(t) - Bhd(t) - pbL(t)*BLd(t);  
+   if M1hN(t) >= 0
+       z1 = 1;
+       z2 = 0;
+   else
+       z1 = 0;
+       z2 = 1;
+   end
+   M1h(t) = z1*M1hN(t);                                       % (10.44) realized chqing
+   M2h(t) = z1*M2d(t) + z2*(Vnc(t) - Bhh(t) - pbL(t)*BLd(t)); % (10.46) realized time deposits
+   % Household Wealth, net of cash
+
+            
+% CENTRAL BANK (RE)ACTIVITY, Box 10.9
+   As(t)    = Ad(t);                            % (10.59) Advances to Commerical Banks
+   Bcb(t)   = Bs(t) - Bhh(t) - Bbd(t);          % (10.57) Residual purchaser of bills
+   Hs(t)    = Bcb(t) + As(t);                   % (10.55) Stock of HPM (current liabilities)
+   Hbs(t)   = Hs(t)  - Hhs(t);                  % (10.56)
+end
+
+% Steady State Condition
+ystar = (G + rb.*Bs + ERrbL.*BLs).*((1+tau)./(p.*tau));         % (10.89)
+
+
+
+% Display Table Output
+fprintf('\n');
+fprintf('_______________________________________________________________________________________________\n');
+fprintf('     | Income/ |Disposable|   Real  | Public  |   Real    |Inflation|CB-held|  Real   |\n');
+fprintf('iter.| Output  |  Income  |Inventory|Borrowing|Consumption|  Rate   | bills | Wealth  |\n');
+fprintf(' [t] |  [Y]    |  [ydr]   |   [in]  |  [PSBR] |    [c]    | [pi]    | [Bcb] |  [V]    |\n');
+fprintf('-----|---------|----------|---------|---------|-----------|---------|-------|---------|\n');
+for t = 1:T
+    fprintf('%3d  |  %6.2f | %6.2f   | %6.2f  |  %5.2f  |   %6.2f  | %6.4f  | %4.2f |  %6.2f |',...
+              t-1, y(t), ydr(t), in(t), PSBR(t)/p(t), c(t), pi(t), Bcb(t), v(t));
+    fprintf('\n')
+end
+
+% Plots
+periods = (1:T)';
+figure('Name', 'Inventories', 'units', 'normalized', 'position', [0,0.2, 0.35, 0.8])
+subplot(3,1,1)
+plot(periods, in, '--r', 'linewidth', 2)
+title('Real Inventories')
+legend('inv.')
+legend('location', 'northwest')
+%ylim([0, Y(T)+G(T)])
+
+subplot(3,1,2)
+plot(periods, BLR, '--b', 'linewidth', 1.5)
+hold on
+plot(periods, BLRN, 'k-', 'linewidth', 1)
+title('Bank Liquidity Funding Ratio')
+legend('Actual', 'Notional')
+legend('location', 'southeast')
+%ylim([0,YDr(T)+G(T)])
+
+subplot(3,1,3)
+h=plot( periods, BPM, 'b-.',  periods, toppm*ones(T,1), 'k-',...
+        periods, botpm*ones(T,1), 'k-');
+set(h(1), 'linewidth', 2)
+legend(h(1), {'BPM'}, 'location', 'southwest')
+title('Bank Profitability Margin')
+%ylim([0, Hh(T)+G(T)])
+
+
+% Plots -- Relative
+figure('Name', 'Relative Changes',...
+       'units', 'normalized', 'position', [0.4,0.2, 0.35, 0.8])
+subplot(3,1,1)
+plot(periods(shock-1:end), y(shock-1:end)/y(shock), '--b',...
+     periods(shock-1:end), c(shock-1:end)/c(shock), 'r-.', 'linewidth', 1.2)
+title('Interest Rates')
+legend('Bond Interest Rate', 'Bill Interest Rate')
+legend('location', 'northeast')
+xlim([shock-2,T])
+ylim([0.98,1.03])
+
+subplot(3,1,2)
+W = plot(periods(1:shock+15), v(1:shock+15)/v(shock),     '--r', ...
+         periods(1:shock+15), Hhh(1:shock+15)/Hhh(shock), '-g', ...
+         periods(1:shock+15), M1h(1:shock+15)/M1h(shock), '--k', ...
+         periods(1:shock+15), M2h(1:shock+15)/M2h(shock), 'b--',...
+         periods(1:shock+15), Bhh(1:shock+15)/Bhh(shock), 'g-.', ...
+         periods(1:shock+15), BLh(1:shock+15)/BLh(shock), 'c-.');
+set(W, 'linewidth', 1)
+title('Evolution of Wealth and Its Components')
+legend('Wealth', 'Cash', 'Chqing', 'Time D', 'Bills', 'Bonds')
+legend('location', 'northwest')
+%ylim([0, Y(T)+G(T)])
+
+
+subplot(3,1,3)
+h=plot( periods, BPM, 'b-.',  periods, toppm*ones(T,1), 'k-',...
+        periods, botpm*ones(T,1), 'k-');
+set(h(1), 'linewidth', 1.2)
+legend(h(1), {'BPM'}, 'location', 'southwest')
+title('Bank Profitability Margin')
+ylim([0.0019, 0.006])
+
+
+
+
+disp(' ')
