@@ -1,0 +1,203 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                   %
+%         Godley and Lavoie         %
+%        MONETARY ECONOMICS         %
+%             2nd edition           %
+%                                   %
+%            LP model               %
+%           Chapter 5               %
+%                                   %
+%  code by  Anthony Bonen           %
+%           March 2014              %
+%                                   %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+close all
+clear all
+
+T = 50;            % Number of periods (e.g. years)
+
+% Endogenous Variables - preallocated
+Y       = NaN(T,1);       % Total Output/Income
+YDe     = NaN(T,1);       % Expected Disposable Income
+YDr     = NaN(T,1);       % Realized Disposable Income
+C       = NaN(T,1);       % Consumption
+CG      = NaN(T,1);       % Capital Gains
+CGe     = NaN(T,1);       % Expected Capital Gains
+tax     = NaN(T,1);       % Tax revenue
+V       = NaN(T,1);       % Wealth
+Ve      = NaN(T,1);       % Wealth, expected
+
+% preallocation - portfolio choices
+Hd      = NaN(T,1);       % Household cash money desired
+Hh      = NaN(T,1);       % Household cash money held
+Hs      = NaN(T,1);       % Household cash money supplied
+
+Bd      = NaN(T,1);       % Short-term Government bills desired
+Bh      = NaN(T,1);       % Short-term Government bills held
+Bs      = NaN(T,1);       % Short-term Government bills supplied
+Bcb     = NaN(T,1);       % Government Bills held by Central Bank
+
+BLd     = NaN(T,1);       % Long -term Government Bonds desired
+BLh     = NaN(T,1);       % Long -term Government Bonds held
+BLs     = NaN(T,1);       % Long -term Government Bonds supplied
+
+PCd     = [Hd, Bd, BLd];  % Vectorized portfolio allocations (desired)
+
+rb      = NaN(T,1);       % Interest Rate on Bills
+rbL     = NaN(T,1);       % Interest Rate on Bonds
+pbL     = NaN(T,1);       % Market Price of Bonds (inverse of rbL)
+pbLe    = NaN(T,1);       % Expected Market Prices of Bonds
+ERrbL   = NaN(T,1);       % Expected Total Bond Retunrs (interest + cap gains)
+
+
+
+% Parameters
+r       = 0;             % interest rate on money
+theta   = 0.1938;        % tax rate
+alpha1  = 0.8;           % marginal propensity to consume from dispoable income
+alpha2  = 0.2;           % marginal propensity to consume from assets
+chi     = 0.1;           % expectations adjustment parameter
+
+% Ratios of portfolio adjustments
+lambda   = NaN(3,5);     % Responses to Three Assets + Expected Wealth:
+                                    % 0) Constant level of asset holding (lambda_i0)
+                                    % 1) Cash / High Powered Money, H
+                                    % 2) Treasury Bills, B (short bonds)
+                                    % 3) Treasury Bonds, BL (long bonds)
+                                    % 4) Changing (expected) Disposable Income\
+                                    %               to Wealth (net of cash) ratio
+
+lambda(2,:) = [0.44196, NaN,  1.1, -1 , -0.03];  % Bills response to HPM, SELF, bond and YD/Vnc, respectively
+lambda(3,:) = [0.3997,  NaN,  -1 , 1.1, -0.03];  % Bonds response to HPM, bill, SELF and YD/Vnc, respectively                                    
+% NOTE: Hd is the residual PC variable and hence will always equal Hh
+% thus the PC variables for Hd (row 1 in lambda) are not necessary for the
+% progam to work.  Nevertheless the (ADUP.1-ADUP.5) restrictions ensure the values:
+lambda(1,:) = [1, 0, 0, 0, 0] - [sum(lambda(2:end,1)), sum(lambda(2:end,2)),...
+                                 sum(lambda(2:end,3)), sum(lambda(2:end,4)),...
+                                 sum(lambda(2:end,5))];
+% by symmtery (ADUP.9-ADUP.11)
+lambda(2,2) = lambda(1,3);
+lambda(3,2) = lambda(1,4);
+lambda(1,2) = 0 - sum(lambda(2:end,2));
+
+
+% Exogenous Variable - preallocated
+G      = 20*ones(T,1);                      % Government expenditure
+rb_init  = 0.03;
+pbL_init = 20;
+
+% Initializations
+YDr(1:2) = 95.803;
+YDe(1:2) = YDr(1:2);
+V(1)     = 95.803;
+
+rb(1)    = rb_init;
+pbL(1)   = pbL_init;
+rbL(1)   = 1/pbL(1);
+
+Bh(1)  = 37.839;
+%Bs(1) = 37.964;
+Bs(1)  = 57.964;
+Bcb(1) = Bs(1) - Bh(1);
+BLh(1) = 1.892;
+BLs(1) = BLh(1);
+Hs(1)  = 20.125;
+
+
+for t = 2:T
+% Monetary Policy -- unexpected tightening
+    if t <= 10
+        rb(t)  = rb_init;
+        pbL(t) = pbL_init;
+    else
+        rb(t)  = 0.04;
+        pbL(t) = 15;
+    end
+    rbL(t) = 1/pbL(t);                                          % (5.19)
+
+% Income, Output and Sales
+    C(t)    = alpha1*YDe(t) + alpha2*V(t-1);                    % (5.6)
+    Y(t)    = C(t) + G(t);                                      % (5.1)
+    tax(t)  = theta*(Y(t) + rb(t-1)*Bh(t-1) + BLh(t-1));        % (5.3)
+    YDr(t)  = Y(t) - tax(t) + rb(t-1)*Bh(t-1) + BLh(t-1);       % (5.2)
+ 
+% Financial asset values and expectations
+    CG(t)   = (pbL(t) - pbL(t-1))*BLh(t-1);                     % (5.5)
+    Ve(t)   = V(t-1) + (YDe(t) - C(t)) + CG(t);                 % (5.7)
+    
+    pbLe(t) = pbL(t);                                           % (5.20)
+    ERrbL(t)= rbL(t) + chi*(pbLe(t) - pbL(t))/pbL(t);           % (5.18)
+    CGe(t)  = chi*(pbLe(t) - pbL(t))*BLh(t-1);                  % (5.21)
+    V(t)    = V(t-1) + (YDr(t) - C(t)) + CG(t);                 % (5.4)
+    
+% Household Portfolio Choices -- Desired Stocks
+   PCd(t,:) = lambda*[1; r; rb(t); ERrbL(t); YDe(t)/Ve(t)];
+       Hd(t)   = PCd(t,1)*Ve(t);                                % HPM
+       Bd(t)   = PCd(t,2)*Ve(t);                                % bills
+       BLd(t)  = PCd(t,3)*Ve(t)/pbL(t);                         % bonds  
+   % HHs' Bills and Bonds are automatically met by CB & Gov't, respectively
+   BLh(t) = BLd(t);                                             % (5.12)
+   BLs(t) = BLh(t);                                             % (5.17)
+   Bh(t)  = Bd(t);                                              % (5.13)
+   
+   % bill supply function as gov't deficit
+   Bs(t)  = Bs(t-1) + (G(t) + rb(t-1)*Bs(t-1) +  BLs(t-1)) ...   % (5.14)
+                 - (tax(t) + rb(t-1)*Bcb(t-1)) - pbL(t)*(BLs(t) - BLs(t-1));
+   Bcb(t) = Bs(t) - Bh(t);                                      % (5.16)    
+   Hs(t)  = Hs(t-1) + Bcb(t) - Bcb(t-1);                        % (5.15)
+   
+   % Cash as residual asset
+   Hh(t)  = V(t)  - Bh(t) - pbL(t)*BLh(t);                      % (5.8)
+   Hd(t)  = Ve(t) - Bd(t) - pbL(t)*BLd(t);                      % (5.9)
+   %Hs(t)  = Hh(t);                                          % (redundant) 
+   
+    % Updated expected disposable income
+    if t < T
+        YDe(t+1)  = YDr(t);                                     % (5.22)
+    else
+        YDe(T)  = YDr(T);
+    end
+end
+
+
+
+
+% Display Table Output
+fprintf('\n');
+fprintf('_______________________________________________________________________________________________\n');
+fprintf('     | Income/ |Disposable| Expected |   Tax   |Consumption|    Financial Stocks    | Wealth  |\n');
+fprintf('iter.| Output  |  Income  |Disp. Inc.| Revenue |           | cash    bills   bonds  |         |\n');
+fprintf(' [t] |  [Y]    |   [YD]   |  [YDe]   |  [tax]  |    [C]    |  [H]     [B]    [BL]   |  [V]    |\n');
+fprintf('-----|---------|----------|----------|---------|-----------|------------------------|---------|\n');
+for t = 1:T
+    fprintf('%3d  |  %6.2f |   %3.2f  | %6.2f   |  %5.2f  |   %6.2f  | %6.2f  %6.2f  %6.2f |  %6.3f |', t-1, ...
+      Y(t), YDe(t), YDr(t), tax(t), C(t), Hh(t), Bh(t), pbL(t)*BLh(t), V(t));
+    fprintf('\n')
+end
+
+
+
+% Plots
+periods = (1:T)';
+figure('Name', 'The Long Run', 'units', 'normalized', 'position', [0.1,0.2, 0.35, 0.8])
+subplot(3,1,1)
+plot(periods, V./YDr, '--r', 'linewidth', 2)
+title('Wealth to Dispoable Income')
+legend('V/YD')
+legend('location', 'southwest')
+%ylim([0, Y(T)+G(T)])
+
+subplot(3,1,2)
+plot(periods, YDr, '-+b', periods, YDe, '.-g', periods, C, '--r', 'linewidth', 1.5)
+title('Dispoable Income & Consumption Levels')
+legend('YDr', 'YDr^e', 'C')
+legend('location', 'northwest')
+%ylim([0,YDr(T)+G(T)])
+
+subplot(3,1,3)
+plot( periods, Bh./V, 'b-.', periods, (pbL.*BLh)./V, 'r--', 'linewidth', 2)
+title('Short & Long Bond ratios to Wealth')
+legend('Bh/V', 'BLh/V')
+legend('location', 'east')
+%ylim([0, Hh(T)+G(T)])
